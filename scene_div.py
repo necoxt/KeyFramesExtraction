@@ -1,19 +1,12 @@
 # -*- coding: utf-8 -*-
 import argparse
-
 import cv2
-import operator
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
 from scipy.signal import argrelextrema
 from glob import glob
 import os
 from tqdm import tqdm
-
-# import torch
-# from torch.utils.data.dataloader import default_collate
-# from torch.utils.data import Dataset, DataLoader
 
 
 def smooth(x, window_len=13, window='hanning'):
@@ -74,6 +67,9 @@ def rel_change(a, b):
 
 
 class FileLoader:
+    """
+    Load images and image paths from videos or image folders
+    """
     def __init__(self, path, type='jpg'):
         assert type in ["mp4", "jpg", "png"], f"Supported types: mp4, jpg, png. Found {type}."
         self.type = type
@@ -113,34 +109,16 @@ class FileLoader:
         else:
             raise NotImplementedError
 
-# def collate_fn(batch):
-#     # Filter None data
-#     if batch[0][0] is None:
-#         return None, None
-#     data, path = default_collate(batch)
-#     return data.squeeze().numpy(), path
-#
-#
-# class FileDataset(Dataset):
-#     def __init__(self, path, type='jpg'):
-#         assert type in ["jpg", "png"], f"Supported types: jpg, png. Found {type}."
-#         self.type = type
-#         self.data = sorted(glob(os.path.join(path, "**/*." + type), recursive=True))
-#         if len(self.data) == 0:
-#             raise FileNotFoundError(f"Unable to find .{type} file in {path}")
-#
-#     def __getitem__(self, item):
-#         img = cv2.imread(self.data[item])
-#         if img is None:
-#             return None, None
-#         luv = cv2.cvtColor(img, cv2.COLOR_BGR2LUV)
-#         return luv, self.data[item]
-#
-#     def __len__(self):
-#         return len(self.data)
-
 
 def write_txt(out_dir, key_frames, split):
+    """
+    Write keyframes to txt files.
+
+    input:
+        out_dir (str): the output directory
+        key_frames (List[str]): keyframe paths
+        split (float): ratio of test data in all keyframes
+    """
     key_frames = [i + ' ' + i.replace('color', 'depth').replace('jpg', 'png') for i in key_frames]
     train_file = os.path.join(out_dir, "azure_train.txt")
     test_file = os.path.join(out_dir, "azure_test.txt")
@@ -155,6 +133,18 @@ def write_txt(out_dir, key_frames, split):
 
 
 def extract_frames(path, out_dir, len_window, split, view, type='jpg', mode="USE_LOCAL_MAXIMA", value=None):
+    """
+    Extract keyframes using the specified strategy.
+
+    input:
+        path (str): the data directory
+        out_dir (str): the output directory
+        len_window (int): the windows size of smoothing used in USE_LOCAL_MAXIMA strategy
+        view (bool): whether view keyframe images after extraction
+        type (str): image or video suffix
+        mode (str): the strategy to extract keyframes, currently support ["USE_TOP_ORDER", "USE_THRESH", "USE_LOCAL_MAXIMA"]
+        value (int | float): number of frames in USE_TOP_ORDER mode or threshold in USE_THRESH mode
+    """
     assert mode in ["USE_TOP_ORDER", "USE_THRESH", "USE_LOCAL_MAXIMA"]
     if mode in ["USE_TOP_ORDER", "USE_THRESH"]:
         assert value is not None
@@ -162,9 +152,6 @@ def extract_frames(path, out_dir, len_window, split, view, type='jpg', mode="USE
     print("Output path: " + out_dir)
 
     file_loader = FileLoader(path, type)
-    # file_data = FileDataset(path, type)
-    # file_loader = DataLoader(file_data, batch_size=1, shuffle=False, num_workers=8, collate_fn=collate_fn)
-    curr_frame = None
     prev_frame = None
 
     frames = []
@@ -206,11 +193,6 @@ def extract_frames(path, out_dir, len_window, split, view, type='jpg', mode="USE
         plt.plot(sm_diff_array)
         plt.show()
 
-        # for i, path in enumerate(key_frames):
-        #     cv2.imshow(path, cv2.imread(path))
-        #     cv2.waitKey(0)
-        #     cv2.destroyAllWindows()
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -219,5 +201,5 @@ if __name__ == '__main__':
     parser.add_argument('-w', '--window', default=13, type=int, help='smoothing window size')
     parser.add_argument('-s', '--split', default=0.2, type=float, help='ratio of test set')
     parser.add_argument('-v', '--view', action="store_true", help='view results')
-    args = parser.parse_args(['--path', './AzureKinect/20220506103628', '--window', '5'])
+    args = parser.parse_args()
     extract_frames(args.path, args.out, args.window, args.split, args.view)
