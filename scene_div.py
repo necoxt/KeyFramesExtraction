@@ -7,6 +7,7 @@ from scipy.signal import argrelextrema
 from glob import glob
 import os
 from tqdm import tqdm
+from view import view
 
 
 def smooth(x, window_len=13, window='hanning'):
@@ -70,6 +71,7 @@ class FileLoader:
     """
     Load images and image paths from videos or image folders
     """
+
     def __init__(self, path, type='jpg'):
         assert type in ["mp4", "jpg", "png"], f"Supported types: mp4, jpg, png. Found {type}."
         self.type = type
@@ -132,26 +134,28 @@ def write_txt(out_dir, key_frames, split):
         print(f"Extracted Testing Keyframes: {l_test}")
 
 
-def extract_frames(path, out_dir, len_window, split, view, type='jpg', mode="USE_LOCAL_MAXIMA", value=None):
+def extract_frames(path, out_dir, split, plot, mode, value, suffix='jpg'):
     """
     Extract keyframes using the specified strategy.
 
     input:
         path (str): the data directory
         out_dir (str): the output directory
-        len_window (int): the windows size of smoothing used in USE_LOCAL_MAXIMA strategy
-        view (bool): whether view keyframe images after extraction
-        type (str): image or video suffix
+        split (float): ratio of test data in all keyframes
+        plot (bool): whether plot keyframe images after extraction
         mode (str): the strategy to extract keyframes, currently support ["USE_TOP_ORDER", "USE_THRESH", "USE_LOCAL_MAXIMA"]
-        value (int | float): number of frames in USE_TOP_ORDER mode or threshold in USE_THRESH mode
+        value (int | float): window size in "USE_LOCAL_MAXIMA" mode, or in number of frames in "USE_TOP_ORDER" mode, or threshold in "USE_THRESH" mode
+        suffix (str): image or video suffix
     """
-    assert mode in ["USE_TOP_ORDER", "USE_THRESH", "USE_LOCAL_MAXIMA"]
-    if mode in ["USE_TOP_ORDER", "USE_THRESH"]:
-        assert value is not None
+    modes = {"USE_TOP_ORDER": "WINDOW_SIZE", "USE_THRESH": "NUMBER_OF_FRAMES", "USE_LOCAL_MAXIMA": "THRESHOLD"}
+    assert mode in modes, f"Specified mode {mode} not in {modes.keys()}"
+    assert value is not None, f"Please specify the {modes[mode]} for {mode} mode"
     print("Data path:" + path)
     print("Output path: " + out_dir)
+    print("Strategy: " + mode)
+    print(modes[mode] + ": " + str(value))
 
-    file_loader = FileLoader(path, type)
+    file_loader = FileLoader(path, suffix)
     prev_frame = None
 
     frames = []
@@ -174,32 +178,36 @@ def extract_frames(path, out_dir, len_window, split, view, type='jpg', mode="USE
         key_frames = [frame for count, frame in frames[:value]]
         write_txt(out_dir, key_frames, split)
     elif mode == "USE_THRESH":
-        print("Using Threshold")
         key_frames = [frames[i][1] for i in range(1, len(frames)) if
                       rel_change(np.float(frames[i - 1][0]), np.float(frames[i][0])) >= value]
         write_txt(out_dir, key_frames, split)
     elif mode == "USE_LOCAL_MAXIMA":
-        print("Using Local Maxima")
         diff_array = np.array([count for count, _ in frames])
-        sm_diff_array = smooth(diff_array, len_window)
+        sm_diff_array = smooth(diff_array, value)
         frame_indexes = np.asarray(argrelextrema(sm_diff_array, np.greater))[0]
         key_frames = [frames[i][1] for i in frame_indexes]
         key_frames_counts = [frames[i][0] for i in frame_indexes]
         write_txt(out_dir, key_frames, split)
-
         plt.figure(figsize=(40, 20))
-        plt.locator_params(numticks=100)
-        plt.stem(frame_indexes, key_frames_counts, linefmt='red')
-        plt.plot(sm_diff_array)
+        plt.stem(frame_indexes, key_frames_counts, linefmt='C1--', markerfmt='C1o')
+        plt.plot(sm_diff_array, linewidth=2)
+        plt.xlabel("Frames")
+        plt.ylabel("Adjacent frames mismatch")
         plt.show()
+
+    if plot:
+        txt_path = glob(os.path.join(out_dir, "*.txt"))
+        view(txt_path[0])
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', required=True, help='video or image folder data path')
     parser.add_argument('-o', '--out', default="./", help='output directory of extracted frames')
-    parser.add_argument('-w', '--window', default=13, type=int, help='smoothing window size')
+    parser.add_argument('-m', '--mode', default=0, type=int, help='smoothing window size')
+    parser.add_argument('-v', '--value', default=None, type=int, help='smoothing window size')
     parser.add_argument('-s', '--split', default=0.2, type=float, help='ratio of test set')
-    parser.add_argument('-v', '--view', action="store_true", help='view results')
+    parser.add_argument('--plot', action="store_true", help='plot results')
     args = parser.parse_args()
-    extract_frames(args.path, args.out, args.window, args.split, args.view)
+    mode_mapping = {0: "USE_LOCAL_MAXIMA", 1: "USE_TOP_ORDER", 2: "USE_THRESH"}
+    extract_frames(args.path, args.out, args.split, args.plot, mode_mapping[args.mode], args.value)
